@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .input-wrapper {
+            display: none;
+            text-align: center;
+        }
+        .result-area {
+            height: 500px;
+            margin: 30px;
+            overflow: auto;
+            border: 1px solid #000;
+        }
+        .result-area #json-view {
+            width: 100%;
+            height: 100%;
+        }
+        .radio-list {
+            margin: 0 50px 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="result-area">
+        <textarea id="json-view"></textarea>
+    </div>
+    <div class="radio-list">
+        <div>输入key：</div>
+        <input id="key" />
+        <div>输入value：</div>
+        <input id="value" />
+    </div>
+    <div class="input-wrapper">
+        <input id="file-input" type="file" />
+        <button id="import">将xlsx转为json</button>
+        <button id="export">将json转为xlsx</button>
+    </div>
+    <script src="./node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="./node_modules/xlsx/dist/xlsx.full.min.js"></script>
+    <script>
+        function s2ab(s) {
+            if (typeof ArrayBuffer !== "undefined") {
+                //1、创建一个字节长度为s.length的内存区域
+                let buf = new ArrayBuffer(s.length);
+                //2、创建一个指向buf的Unit8视图，开始于0字节，直到缓冲区的末尾
+                let view = new Uint8Array(buf);
+                //3、返回指定位置的字符的Unicode编码
+                for (let i = 0; i != s.length; ++i) view[i] = s.charCodeAt(i) & 0xff;
+                return buf;
+            } else {
+                let buf = new Array(s.length);
+                for (let i = 0; i != s.length; ++i) buf[i] = s.charCodeAt(i) & 0xff;
+                return buf;
+            }
+        }
+
+        const saveAs = (obj, fileName) => {
+            //1、创建a标签
+            let tmpa = document.createElement("a");
+            tmpa.download = fileName || "下载";
+            //2、创建url指定文件，绑定a标签
+            tmpa.href = URL.createObjectURL(obj);
+            //3、模拟点击实现下载
+            tmpa.click();
+            //4、延时释放
+            setTimeout(() => {
+                //用URL.revokeObjectURL来释放这个object URL
+                URL.revokeObjectURL(obj);
+            }, 100);
+        }
+
+        function init () {
+            const iptEle = $('#file-input')
+            const iptKeyEle = $('#key')
+            const iptValueEle = $('#value')
+            const showEle = $('#json-view')
+            const btnEle = $('#import')
+            const btn2Ele = $('#export')
+            const listEle = $('.radio-list')
+            const obj = {}
+            
+            iptEle.on('change', function() {
+                const iptFile = iptEle.prop('files')[0]
+                const type = iptFile.name.split('.')[1]
+
+                if (type !== 'xlsx' && type !== 'xls') {
+                    alert('文件格式错误')
+                    window.location.reload()
+                    return
+                }
+
+                const reader = new FileReader()
+                reader.readAsBinaryString(iptFile)
+                reader.onload = (e) => {
+                    const data = e.target.result
+                    const zzexcel = window.XLS.read(data, {
+                        type: 'binary'
+                    })
+
+                    for (let i = 0; i < zzexcel.SheetNames.length; i++) {
+                        const item = zzexcel.Sheets[zzexcel.SheetNames[i]]
+                        const newData = window.XLS.utils.sheet_to_json(item)
+                        for (let o = 0; o < newData.length; o++) {
+                            obj[newData[o][iptKeyEle.val()]] = newData[o][iptValueEle.val()]
+                        }
+                    }
+                }
+            })
+
+            iptKeyEle.change(function() {
+                if (iptKeyEle.val() && iptValueEle.val()) {
+                    $('.input-wrapper').css('display', 'block')
+                } else {
+                    $('.input-wrapper').css('display', 'none')
+                }
+            })
+
+            iptValueEle.on('change', function() {
+                if (iptKeyEle.val() && iptValueEle.val()) {
+                    $('.input-wrapper').css('display','block')
+                } else {
+                    $('.input-wrapper').css('display', 'none')
+                }
+            })
+
+            btnEle.on('click', function() {
+                showEle.val(JSON.stringify(obj))
+            })
+
+            btn2Ele.on('click', function() {
+                const type = 'xlsx'
+                const reg = /^['|"](.*)['|"]$/
+                const wopts = {
+                    bookType: type,
+                    bookSST: false,
+                    type: 'binary'
+                };
+                const wb = {
+                    SheetNames: ['Sheet1'],
+                    Sheets: {},
+                    Props: {}
+                };
+                const _json = JSON.parse(showEle.val())
+                const json = []
+                const _key = iptKeyEle.val()
+                const _value = iptValueEle.val()
+                for (let item in _json) {
+                    const _obj = {}
+                    _obj[_key] = item,
+                    _obj[_value] = _json[item],
+                    json.push(_obj)
+                }
+                wb.Sheets['Sheet1'] = XLSX.utils.json_to_sheet(json); //通过json_to_sheet转成单页(Sheet)数据
+                let tmpDown = new Blob([s2ab(XLSX.write(wb, wopts))], {
+                    type: 'application/octet-stream'
+                });
+                let textName = new Date().getTime()
+                saveAs(tmpDown, textName + '.' + type);
+            })
+        }
+
+        init()
+    </script>
+</body>
+</html>
